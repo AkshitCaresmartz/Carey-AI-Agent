@@ -1,0 +1,15 @@
+[project]
+name = "pymcp"
+version = "0.1.0"
+description = "Python MCP Client with Chat API integration"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.118.0",
+    "groq>=0.32.0",
+    "httpx>=0.28.1",
+    "mcp[cli]>=1.15.0",
+    "pydantic>=2.11.9",
+    "pydantic-settings>=2.11.0",
+    "uvicorn>=0.37.0",
+]
