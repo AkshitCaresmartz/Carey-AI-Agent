@@ -45,120 +45,122 @@ A clean and powerful Python MCP client with FastAPI-based chat service using GRO
 ## API Usage
 
 ### Chat Endpoint
+# PyMCP Chat API
 
-**POST** `/chat/chat`
+PyMCP Chat API is a small FastAPI-based service that connects a GROQ LLM provider with an MCP (Model Capability Provider) server. The service:
 
-```json
-{
-  "message": "How many caregivers are available?",
-  "groq_api_key": "optional_key_override",
-  "access_token": "your_mcp_access_token_for_tools",
-  "conversation_id": "optional_conversation_id",
-  "model": "optional_model_override"
-}
+- Converts MCP tool metadata into function descriptors consumable by GROQ's function-calling API.
+- Lets the model decide whether to call MCP tools, executes requested tools, and feeds results back to the model.
+- Synthesizes a concise, human-readable reply based on tool outputs.
+
+This repository is intended for local development and testing. It uses an in-memory conversation store (replace with Redis/DB for production).
+
+## Repository layout
+
+- `main.py` - FastAPI application entrypoint and Uvicorn launcher
+- `pyproject.toml` - Project metadata and dependencies
+- `pymcp/`
+  - `chat_api.py` - FastAPI router exposing `/chat` endpoints and conversation lifecycle
+  - `mcp_client.py` - MCP client wrapper for listing and calling tools
+  - `groq_client.py` - GROQ LLM integration and tool orchestration
+  - `config.py` - pydantic-based environment settings
+
+## Requirements
+
+- Python 3.13+
+
+Dependencies (declared in `pyproject.toml`):
+
+- fastapi
+- groq
+- httpx
+- mcp[cli]
+- pydantic
+- pydantic-settings
+- uvicorn
+
+## Environment variables
+
+Set the following environment variables (or use a `.env` loader in your environment):
+
+- `GROQ_API_KEY` (required) — API key used to authenticate with the GROQ provider.
+- `GROQ_MODEL` (optional) — model name to use (the app will read a default from settings if not provided).
+- `MCP_SERVER_URL` (optional) — MCP server base URL (e.g., `http://localhost:8080`).
+- `API_HOST` (optional) — host for Uvicorn to bind to (default `127.0.0.1`).
+- `API_PORT` (optional) — port for Uvicorn to bind to (default `8000`).
+- `DEBUG` (optional) — `true` to enable reload and more verbose logging.
+
+Important: The GROQ API key and model come from environment/settings only and must not be passed in request bodies. MCP access requires a Bearer token passed in the `Authorization` header when calling `/chat/chat`.
+
+## Install (PowerShell)
+
+Recommended: create and use a virtual environment.
+
+```powershell
+# From project root
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -e .
 ```
 
-**Response:**
-```json
-{
-  "message": "Based on the current data, there are 25 active caregivers available in your system.",
-  "conversation_id": "conv_0",
-  "used_tools": true,
-  "tool_calls": [
-    {
-      "id": "call_123",
-      "function": {
-        "name": "get_caregiver_count",
-        "arguments": "{\"status\":\"active\"}"
-      }
-    }
-  ]
-}
-```
+Alternatively install dependencies with `pip install -r requirements.txt` if you export them.
 
-### Example with MCP Tools
+## Run the app (PowerShell)
 
-```bash
-curl -X POST "http://localhost:8000/chat/chat" \
-     -H "Content-Type: application/json" \
-     -d '{
-       "message": "How many caregivers are in the system?",
-       "access_token": "your_mcp_access_token"
-     }'
-```
+Set environment variables and start the server.
 
-### Example without MCP Tools
+```powershell
+$env:GROQ_API_KEY = "sk-...your-key..."
+$env:GROQ_MODEL = "groq-alpha-1"
+$env:MCP_SERVER_URL = "http://localhost:8080"
+$env:API_HOST = "127.0.0.1"
+$env:API_PORT = "8000"
+$env:DEBUG = "true"
 
-```bash
-curl -X POST "http://localhost:8000/chat/chat" \
-     -H "Content-Type: application/json" \
-     -d '{"message": "Hello, world!"}'
-```
-
-### Example with Python
-
-```python
-import requests
-
-# Simple chat without MCP tools
-response = requests.post(
-    "http://localhost:8000/chat/chat",
-    json={
-        "message": "What is the capital of France?",
-        "groq_api_key": "your_api_key_here"  # Optional if set in .env
-    }
-)
-
-# Chat with MCP tools for data queries
-response = requests.post(
-    "http://localhost:8000/chat/chat",
-    json={
-        "message": "Show me the active caregivers",
-        "access_token": "your_mcp_access_token",  # Enables MCP tools
-        "groq_api_key": "your_api_key_here"  # Optional if set in .env
-    }
-)
-
-print(response.json())
-```
-
-## Configuration
-
-Create a `.env` file in the project root:
-
-```env
-# GROQ LLM Configuration
-GROQ_API_KEY=your_groq_api_key_here
-GROQ_MODEL=llama-3.1-8b-instant
-
-# MCP Server Configuration (optional - for advanced tool usage)
-MCP_SERVER_URL=https://aimcpserver.caresmartz360.net/mcp
-
-# Web API Configuration
-API_HOST=localhost
-API_PORT=8000
-DEBUG=true
-```
-
-## How It Works
-
-The system intelligently determines when to use MCP tools:
-
-1. **Simple Conversation**: Questions like "Hello", "How are you?", "What is 2+2?" are handled directly by GROQ LLM
-2. **Tool-Enhanced Queries**: Questions about data, searching, counting, or specific information automatically use MCP tools when an `access_token` is provided
-
-### Tool Detection Examples:
-- ✅ **Uses Tools**: "How many caregivers?", "Find patient data", "Show appointments"
-- ❌ **Direct LLM**: "Hello", "Thank you", "What is Python?"
-
-## Additional Endpoints
-
-- `GET /` - API information
-- `GET /health` - Health check
-- `GET /docs` - Interactive API documentation
-- `GET /conversation/{conversation_id}` - Get conversation history
-- `DELETE /conversation/{conversation_id}` - Clear conversation
 - `GET /conversations` - List all conversations
+python main.py
+```
+
+Visit `http://127.0.0.1:8000/docs` for OpenAPI docs and to test endpoints interactively.
+
+## Example requests
+
+- Health check
+
+```powershell
+Invoke-RestMethod -Uri http://127.0.0.1:8000/health
+```
+
+- Chat (example request with Authorization header)
+
+```powershell
+$body = @{ message = "How many open shifts exist for 2025-09-30?" } | ConvertTo-Json
+Invoke-RestMethod -Uri http://127.0.0.1:8000/chat/chat -Method Post -Body $body -ContentType 'application/json' -Headers @{ Authorization = 'Bearer <MCP_TOKEN>' }
+```
+
+The `/chat/chat` response contains `message`, `conversation_id`, `used_tools`, and `tool_calls`.
+
+## Logging & debugging
+
+The app configures basic logging in `main.py`. Set `DEBUG=true` to enable reload and more verbose logs. The code logs:
+
+- MCP client initialization and masked token presence
+- Tool discovery and per-tool metadata
+- Model responses and tool-call decisions
+- Tool invocation arguments and results
+
+If you hit errors related to authentication or tool payload validation, inspect logs for the precise GROQ/MCP responses — the provider enforces strict message shapes for function-calling.
+
+## Notes & next steps
+
+- Conversation state is currently held in memory. Use Redis or a database for production.
+- Consider adding unit tests for `groq_client` tool normalization and synthesis flow.
+- If you want, I can add a `.env.example`, a pinned `requirements.txt`, or an automated test script.
+
+---
+
+If you'd like, I can also generate a `requirements.txt` with pinned versions or add a `.env.example`. Let me know which you'd prefer.
 
 ## Project Structure
 

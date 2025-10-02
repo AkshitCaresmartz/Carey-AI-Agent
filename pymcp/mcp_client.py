@@ -40,6 +40,14 @@ class MCPClient:
         self.server_url = server_url.rstrip('/')
         self.settings = settings
         self.access_token = access_token
+        # Log creation for observability (do not log full token)
+        try:
+            masked = None
+            if self.access_token:
+                masked = self.access_token[:6] + '...' + self.access_token[-6:]
+            logger.info(f"MCPClient initialized for server={self.server_url} access_token_present={bool(self.access_token)} token_mask={masked}")
+        except Exception:
+            logger.info(f"MCPClient initialized for server={self.server_url} access_token_present={bool(self.access_token)}")
 
     @asynccontextmanager
     async def _get_client_session(self) -> AsyncGenerator[ClientSession, None]:
@@ -99,6 +107,14 @@ class MCPClient:
         try:
             async with self._get_client_session() as session:
                 result: ListToolsResult = await session.list_tools()
+                # Log detailed tool information for debugging
+                tool_names = [t.name for t in result.tools]
+                logger.info(f"Retrieved {len(result.tools)} tools from MCP server: {tool_names}")
+                for t in result.tools:
+                    try:
+                        logger.debug(f"Tool: {t.name}, description: {t.description}, inputSchema: {t.inputSchema}, outputSchema: {t.outputSchema}")
+                    except Exception:
+                        logger.debug(f"Tool: {t.name} (failed to serialize schemas)")
                 return result.tools
         except Exception as e:
             # Re-raise with more context for better error handling
@@ -122,7 +138,15 @@ class MCPClient:
         """
         try:
             async with self._get_client_session() as session:
-                return await session.call_tool(name, arguments)
+                logger.info(f"Calling tool '{name}' with arguments: {arguments}")
+                result = await session.call_tool(name, arguments)
+                # Log result summary
+                try:
+                    logger.info(f"Tool '{name}' returned: isError={result.isError}, structuredContent={getattr(result, 'structuredContent', None) is not None}")
+                    logger.debug(f"Full tool result for '{name}': {result}")
+                except Exception:
+                    logger.debug(f"Tool '{name}' returned (unserializable result)")
+                return result
         except Exception as e:
             # Re-raise with more context for better error handling
             logger.error(f"Failed to call tool '{name}' on MCP server: {e}")
